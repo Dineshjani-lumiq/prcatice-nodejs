@@ -4,12 +4,17 @@ const router=express.Router();
 var cors = require('cors')
 const mongoose = require('mongoose')
 const User = require('../models/user')
+const tokenmodel = require('../models/refreshtoken');
+
 const bcrypt = require('bcrypt')
 const passport=require('passport');
 const auth=require('../middleware/auth');
+const auth1=require('../middleware/auth1');
+
 const jwt = require('jsonwebtoken')
 
-const JWT_SECRET = 'sdjkfh8923yhjdksbfma@#*(&@*!^#&@bhjb2qiuhesdbhjdsfg839ujkdhfjk'
+const JWT_SECRET = 'sdjkfh8923yhjdksbfma@#*(&@*!^#&@bhjb2qiuhesdbhjdsfg839ujkdhfjk';
+const refesh_SECRET = 'thisismyrefreshsecret';
 
 mongoose.connect('mongodb://localhost:27017/signin-signup', (err) => {
     if (!err)
@@ -221,10 +226,26 @@ router.post('/api/login', async (req, res) => {
 				id: user._id,
 				username: user.username
 			},
-			JWT_SECRET
+			JWT_SECRET,
+            {
+                    expiresIn: 60 // expires in 1 minute
+                }
 		)
-
-		return res.json({ status: 'ok', data: token })
+        const refreshtoken=jwt.sign(
+			{
+				id: user._id,
+				username: user.username
+    
+			},
+			refesh_SECRET,
+            {
+                    expiresIn: '60y' // expires in 1 minute
+                }
+		)
+await tokenmodel.create({
+			token:refreshtoken
+		})
+		return res.json({ status: 'ok', accesstoken: token,refreshtoken:refreshtoken })
 	}
 
 	res.json({ status: 'error', error: 'Invalid username/password' })
@@ -253,6 +274,7 @@ router.post('/api/register', async (req, res) => {
 	}
 
 	const password = await bcrypt.hash(plainTextPassword, 10)
+    
 
 	try {
 		const response = await User.create({
@@ -272,7 +294,116 @@ router.post('/api/register', async (req, res) => {
 })
 
 router.get('/secret',auth,(req,res)=>{
+    
 res.json({ status: 'Secret INformatin' });
+})
+
+
+router.post('/refresh',(req,res)=>{
+    var token=req.headers['authorization'];
+console.log(token);
+if(!token){
+    res.json({status:'You do not send token so you are not allowed for secret information'});
+}
+let tokenslice;
+    
+  console.log("verify token");
+    
+      tokenslice =  token.slice(7);                                                              
+     
+      let refreshntoken;
+      tokenmodel.findOne({ token: tokenslice },function(err,ans){
+          if(err){
+  res.json({status:'refreshtoken is not persent in database'});
+          }
+          else{
+              console.log("ram");
+              console.log(ans);
+              
+          }
+      });
+     
+            
+    let userId;
+   jwt.verify(tokenslice, refesh_SECRET, (err, decoded) => {
+if(err){
+               res.json({ status: 'your token is not valid' });
+
+}
+else{
+    
+    console.log(decoded);
+    userid=decoded.id;
+     User.findOne({ _id: userid },function(err,user){
+if(err){
+    res.json({status:'token valid but user not found'});
+}
+console.log(user);
+const token = jwt.sign(
+			{
+				id: user._id,
+				username: user.username
+			},
+			JWT_SECRET,
+            {
+                    expiresIn: 60 // expires in 1 minute
+                }
+		)
+        const refreshtoken=jwt.sign(
+			{
+				id: user._id,
+				username: user.username
+    
+			},
+			refesh_SECRET,
+            {
+                    expiresIn: '60y' // expires in 1 minute
+                }
+		)
+        // database whitelist
+            tokenmodel.create({ token: refreshtoken });
+            res.json({ token, refreshtoken });
+
+
+
+    
+    
+    
+
+    
+
+     })
+    
+
+}
+     })
+          
+                
+    
+})
+
+
+router.post('/logout',auth1,(req,res)=>{
+    var token=req.headers['authorization'];
+
+          tokenslice =  token.slice(7);                                                              
+
+    tokenmodel.deleteOne({ token: tokenslice },function(err,ans){
+        if(err){
+            res.json({
+                status:'error in loogout'
+            })
+
+        }
+        else{
+            res.json({
+                status:'refreshtoken deleted succesfully',
+                refreshntoken:tokenslice
+
+            })
+        }
+    })
+        
 })
 
 
